@@ -1,0 +1,15 @@
+{
+  "name": "olova",
+  "version": "2.0.3",
+  "description": "A lightweight JavaScript framework for building reactive applications.",
+  "main": "dist/olova.js",
+  "keywords": [
+    "javascript",
+    "framework",
+    "reactive",
+    "olova",
+    "olovajs"
+  ],
+  "author": "Nazmul Hossain",
+  "license": "MIT"
+}
