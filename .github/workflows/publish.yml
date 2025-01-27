@@ -16,11 +16,15 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: "16"
-          cache: "npm"
+          node-version: '16'
+          registry-url: 'https://www.npmjs.com/package/olova'  # Ensure this is specified
+          cache: 'npm'
 
       - name: Install dependencies
         run: npm install
+
+      - name: Build package
+        run: npm run build  # Adjust if your build script has a different name
 
       - name: Publish package
         env:
