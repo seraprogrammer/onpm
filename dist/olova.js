@@ -1,291 +1,248 @@
-const memoize = (e) => {
-  const t = new Map();
-  return (...n) => {
-    const r = JSON.stringify(n);
-    return t.has(r) || t.set(r, e(...n)), t.get(r);
-  };
-};
-let currentObserver = null;
-function diffProps(e = {}, t = {}, n) {
-  void 0 !== t.className && ((t.class = t.className), delete t.className),
-    void 0 !== e.className && ((e.class = e.className), delete e.className);
-  for (const [r, o] of Object.entries(e))
-    r in t ||
-      (r.startsWith("on")
-        ? n.removeEventListener(r.slice(2).toLowerCase(), o)
-        : "style" === r
-        ? (n.style.cssText = "")
-        : n.removeAttribute(r));
-  for (const [r, o] of Object.entries(t))
-    if (null != o && e[r] !== o)
-      if (r.startsWith("on")) {
-        const t = r.slice(2).toLowerCase();
-        e[r] && n.removeEventListener(t, e[r]), n.addEventListener(t, o);
-      } else if ("ref" === r)
-        o && "object" == typeof o && "current" in o
-          ? (o.current = n)
-          : "function" == typeof o && o(n);
-      else if ("style" === r) {
-        const e = n.style;
-        "object" == typeof o ? Object.assign(e, o) : (e.cssText = o);
-      } else n.setAttribute(r, o);
-}
-const diffChildren = memoize((e, t, n) => {
-  const r = Array.isArray(e) ? e.flat() : [e],
-    o = Array.isArray(t) ? t.flat() : [t],
-    s = Math.max(r.length, o.length);
-  for (let e = 0; e < s; e++) {
-    const t = r[e],
-      s = o[e];
-    if (!t || s)
-      if (t || !s) {
-        if (t instanceof Node && s instanceof Node)
-          t.nodeType !== s.nodeType || t.nodeName !== s.nodeName
-            ? n.replaceChild(s, t)
-            : (diffProps(t.attributes, s.attributes, t),
-              diffChildren(
-                Array.from(t.childNodes),
-                Array.from(s.childNodes),
-                t
-              ));
-        else if (t !== s) {
-          const t = n.childNodes[e];
-          t && (t.textContent = String(s));
+import e from "./hooks/state.js";
+import t from "./hooks/effect.js";
+import n from "./hooks/memo.js";
+import s from "./hooks/callback.js";
+import o from "./hooks/reducer.js";
+import r from "./hooks/ref.js";
+import i from "./hooks/context.js";
+const c = new (class {
+  constructor() {
+    (this.rootElement = null),
+      (this.components = new Map()),
+      (this.componentStack = []),
+      (this.componentInstances = new Map()),
+      (this.pendingUpdates = []),
+      (this.pendingEffects = []),
+      (this.contextSubscriptions = new WeakMap()),
+      (this.isBatchingUpdates = !1),
+      (this.hasScheduledFlush = !1),
+      (this.dirtyInstances = null);
+  }
+  createElement(e, t, ...n) {
+    return null == e
+      ? (console.error("Element type cannot be null or undefined"), null)
+      : "function" == typeof e || "string" == typeof e
+      ? { type: e, props: { ...t, children: n.flat() } }
+      : (console.error("Invalid element type:", e), null);
+  }
+  render(e, t) {
+    try {
+      if (null == e) return;
+      if ("string" == typeof e || "number" == typeof e)
+        return void t.appendChild(document.createTextNode(e));
+      if (Array.isArray(e)) return void e.forEach((e) => this.render(e, t));
+      if ("function" == typeof e.type) {
+        const n = e.type,
+          s = this.getComponentInstance(n);
+        if (n.__isMemoized) {
+          const n = s.lastProps;
+          if (n && this.deepEqual(n, e.props) && s.lastResult)
+            return void this.render(s.lastResult, t);
         }
-      } else {
-        const e = s instanceof Node ? s : document.createTextNode(String(s));
-        n.appendChild(e);
+        this.componentStack.push(s),
+          (s.currentHook = 0),
+          (s.lastProps = e.props);
+        const o = n(e.props);
+        return (
+          (s.lastResult = o), this.componentStack.pop(), void this.render(o, t)
+        );
       }
-    else t instanceof Node && n.removeChild(t);
-  }
-});
-class Signal {
-  constructor(e) {
-    (this._value = e),
-      (this.observers = new Map()),
-      (this.pending = new Set()),
-      (this.isBatching = !1);
-  }
-  get value() {
-    return (
-      currentObserver &&
-        (this.observers.has("_root") || this.observers.set("_root", new Set()),
-        this.observers.get("_root").add(currentObserver)),
-      this._value
-    );
-  }
-  set value(e) {
-    if (this._value === e) return;
-    const t = this._value;
-    if (((this._value = e), this.observers.has("_root")))
-      for (const e of this.observers.get("_root")) this.pending.add(e);
-    if ("object" == typeof t && "object" == typeof e) {
-      const n = new Set([...Object.keys(t), ...Object.keys(e)]);
-      for (const r of n)
-        if (t[r] !== e[r] && this.observers.has(r))
-          for (const e of this.observers.get(r)) this.pending.add(e);
+      if ("string" != typeof e.type)
+        return void console.error("Invalid element type:", e.type);
+      const n = document.createElement(e.type);
+      this.applyProps(n, e.props),
+        (e.props.children || []).forEach((e) => this.render(e, n)),
+        t.appendChild(n);
+    } catch (e) {
+      console.error("Render error:", e);
     }
-    this.batchUpdate();
   }
-  batchUpdate() {
-    this.isBatching ||
-      ((this.isBatching = !0),
-      Promise.resolve().then(() => {
-        this.pending.forEach((e) => e()),
-          this.pending.clear(),
-          (this.isBatching = !1);
-      }));
+  applyProps(e, t) {
+    Object.keys(t || {}).forEach((n) => {
+      if ("ref" === n && t[n]) t[n].current = e;
+      else if (n.startsWith("on")) {
+        const s = n.toLowerCase().substring(2);
+        e.addEventListener(s, t[n]);
+      } else
+        "children" !== n &&
+          ("className" === n ? e.setAttribute("class", t[n]) : (e[n] = t[n]));
+    });
   }
-  observe(e, t) {
-    this.observers.has(e) || this.observers.set(e, new Set()),
-      this.observers.get(e).add(t);
-  }
-  unobserve(e, t) {
-    this.observers.has(e) && this.observers.get(e).delete(t);
-  }
-}
-function $signal(e) {
-  const t = new Signal(e),
-    n = () => t.value;
-  return (
-    (n.toString = () => t.value),
-    (n.observe = (e, n) => t.observe(e, n)),
-    (n.unobserve = (e, n) => t.unobserve(e, n)),
-    [
-      n,
-      (e) => {
-        t.value = "function" == typeof e ? e(t.value) : e;
-      },
-    ]
-  );
-}
-function $effect(e, t) {
-  let n,
-    r = !0,
-    o = null;
-  const s = () => {
-    "function" == typeof n && (n(), (n = void 0)), (currentObserver = o);
-    const t = e();
-    (currentObserver = null), "function" == typeof t && (n = t);
-  };
-  return (
-    (o = () => {
-      if (r || !t) return s(), void (r = !1);
-      Array.isArray(t) && 0 === t.length ? r && (s(), (r = !1)) : s();
-    }),
-    o(),
-    () => {
-      n && n();
-    }
-  );
-}
-function $memo(e) {
-  const [t, n] = $signal(e());
-  return $effect(() => n(e())), t;
-}
-function $ref(e) {
-  const [t, n] = $signal({
-    current: e,
-    toString() {
-      return this.current;
-    },
-    valueOf() {
-      return this.current;
-    },
-  });
-  return {
-    get current() {
-      return t().current;
-    },
-    set current(e) {
-      n((t) => (t.current === e ? t : { ...t, current: e }));
-    },
-    toString() {
-      return this.current.toString();
-    },
-    valueOf() {
-      return this.current;
-    },
-  };
-}
-function h(e, t, ...n) {
-  if (e === Fragment || Array.isArray(e)) {
-    const r = document.createDocumentFragment(),
-      o = e === Fragment ? t?.children || n : e;
+  getComponentInstance(e) {
     return (
-      Array.isArray(o) &&
-        o.flat().forEach((e) => {
-          null != e &&
-            r.appendChild(
-              e instanceof Node ? e : document.createTextNode(String(e))
-            );
+      this.componentInstances.has(e) ||
+        this.componentInstances.set(e, {
+          hooks: [],
+          currentHook: 0,
+          effects: [],
+          cleanups: new Map(),
+          pendingEffects: [],
+          contextSubscriptions: new Set(),
+          lastProps: null,
+          lastResult: null,
         }),
-      r
+      this.componentInstances.get(e)
     );
   }
-  if (!e) return null;
-  const r = "function" == typeof e ? e(t) : document.createElement(e);
-  if (("string" == typeof e && r && t && diffProps({}, t, r), n.length)) {
-    const e = document.createDocumentFragment(),
-      t = (n) => {
-        if (null != n)
-          if ("function" == typeof n) {
-            const t = document.createTextNode("");
-            $effect(() => {
-              const e = n();
-              if (Array.isArray(e)) {
-                const n = document.createDocumentFragment();
-                e.forEach((e) => {
-                  n.appendChild(
-                    e instanceof Node ? e : document.createTextNode(String(e))
-                  );
-                }),
-                  t.parentNode && t.parentNode.replaceChild(n, t);
-              } else t.textContent = String(e);
-            }),
-              e.appendChild(t);
-          } else
-            n instanceof Node
-              ? e.appendChild(n)
-              : Array.isArray(n)
-              ? n.flat().forEach(t)
-              : e.appendChild(document.createTextNode(String(n)));
-      };
-    n.forEach(t), r.appendChild(e);
+  renderComponent(e, t) {
+    const n = this.getComponentInstance(e);
+    this.componentStack.push(n), (n.currentHook = 0);
+    if (!n.lastResult || this.shouldComponentUpdate(n, e)) {
+      const s = e();
+      (n.lastResult = s),
+        this.render(s, t),
+        n.pendingEffects.length > 0 &&
+          (this.pendingEffects.push(...n.pendingEffects),
+          (n.pendingEffects = []));
+    } else this.render(n.lastResult, t);
+    this.componentStack.pop();
   }
-  return r;
-}
-const Component = (e, t) => {
-    if ("function" != typeof e)
-      throw new Error("Invalid Component: must be a function");
-    return e(t);
-  },
-  Fragment = (e) => e.children;
-window.Fragment = Fragment;
-const Olova = {
-    render(e, t) {
-      const n = "function" == typeof e ? e() : e;
-      return (
-        t.firstChild ? diffChildren([t.firstChild], [n], t) : t.appendChild(n),
-        n
-      );
-    },
-    mount(e, t) {
-      return this.render(e, t);
-    },
-    unmount(e) {
-      e.innerHTML = "";
-    },
-    Fragment: Fragment,
-  },
-  contextRegistry = new Map();
-function $context(e) {
-  const t = Symbol("context");
-  return (
-    contextRegistry.set(t, e),
-    {
-      Provider({ value: e, children: n }) {
-        const r = contextRegistry.get(t);
-        contextRegistry.set(t, e);
-        const o = n;
-        return contextRegistry.set(t, r), o;
+  shouldComponentUpdate(e, t) {
+    return (
+      !t.__isMemoized || !e.lastProps || !this.deepEqual(e.lastProps, t.props)
+    );
+  }
+  getCurrentInstance() {
+    return this.componentStack[this.componentStack.length - 1];
+  }
+  createContext(e) {
+    const t = {
+      _currentValue: e,
+      _defaultValue: e,
+      _subscribers: new Set(),
+      _version: 0,
+      Provider: ({ value: e, children: n }) => {
+        const s = this.getCurrentInstance(),
+          o = s.currentHook++,
+          r = s.hooks[o];
+        return (
+          this.shallowEqual(r, e) ||
+            ((t._currentValue = e),
+            t._version++,
+            t._subscribers.forEach((t) => {
+              (t.instance.hooks[t.hookIndex] = e), this.scheduleUpdate();
+            })),
+          (s.hooks[o] = e),
+          n
+        );
       },
-      use() {
-        const n = contextRegistry.get(t);
-        if (void 0 === n && void 0 === e)
-          throw new Error("Context used outside of Provider");
-        return n ?? e;
+      Consumer: ({ children: e }) => {
+        if ("function" != typeof e)
+          throw new Error("Context.Consumer expects a function as a child");
+        return e(t._currentValue);
       },
+    };
+    return t;
+  }
+  scheduleUpdate() {
+    this.isBatchingUpdates ||
+      ((this.isBatchingUpdates = !0),
+      this.pendingUpdates.push(() => {
+        if (this.rootElement) {
+          const e = this.dirtyInstances || new Set();
+          for (
+            this.components.forEach((t, n) => {
+              const s = this.getComponentInstance(t);
+              e.has(s) && ((n.innerHTML = ""), this.renderComponent(t, n));
+            }),
+              this.dirtyInstances = new Set();
+            this.pendingEffects.length > 0;
+
+          ) {
+            this.pendingEffects.shift()();
+          }
+        }
+      }),
+      this.hasScheduledFlush ||
+        ((this.hasScheduledFlush = !0),
+        queueMicrotask(() => {
+          this.flushUpdates(), (this.isBatchingUpdates = !1);
+        })));
+  }
+  flushUpdates() {
+    for (; this.pendingUpdates.length > 0; ) {
+      this.pendingUpdates.shift()();
     }
-  );
-}
-function $callback(e, t) {
-  const [n, r] = $signal(() => ({
-    fn: e,
-    deps: t,
-    memoized: (...t) => e(...t),
-  }));
-  return (
-    $effect(() => {
-      const o = n();
-      t &&
-        ((o.deps &&
-          t.length === o.deps.length &&
-          !t.some((e, t) => e !== o.deps[t])) ||
-          r({ fn: e, deps: t, memoized: (...t) => e(...t) }));
-    }),
-    () => n().memoized
-  );
-}
-export {
-  $signal,
-  $effect,
-  $memo,
-  $ref,
-  $context,
-  $callback,
-  Component,
-  h,
-  Fragment,
-};
-export default Olova;
+    this.hasScheduledFlush = !1;
+  }
+  mount(e, t) {
+    for (
+      this.rootElement = t,
+        this.components.set(t, e),
+        this.renderComponent(e, t);
+      this.pendingEffects.length > 0;
+
+    ) {
+      this.pendingEffects.shift()();
+    }
+  }
+  unmount(e) {
+    const t = this.components.get(e);
+    if (t) {
+      const n = this.componentInstances.get(t);
+      n &&
+        (n.contextSubscriptions.forEach((e) => e()),
+        n.contextSubscriptions.clear(),
+        n.cleanups.forEach((e) => e()),
+        n.cleanups.clear(),
+        this.componentInstances.delete(t)),
+        this.components.delete(e);
+    }
+    e.innerHTML = "";
+  }
+  memo(e) {
+    const t = (t) => {
+      const n = this.getCurrentInstance();
+      if (!n) return e(t);
+      const s = n.currentHook++,
+        o = n.hooks[s] || { props: null, result: null },
+        r = !o.props || !this.deepEqual(t, o.props);
+      if (!o.result || r) {
+        const o = e(t);
+        return (n.hooks[s] = { props: t, result: o }), o;
+      }
+      return o.result;
+    };
+    return (t.__isMemoized = !0), (t.__original = e), t;
+  }
+  shallowEqual(e, t) {
+    if (e === t) return !0;
+    if (!e || !t) return !1;
+    if ("object" != typeof e || "object" != typeof t) return e === t;
+    const n = Object.keys(e),
+      s = Object.keys(t);
+    return (
+      n.length === s.length &&
+      n.every((n) => t.hasOwnProperty(n) && e[n] === t[n])
+    );
+  }
+  deepEqual(e, t) {
+    if (e === t) return !0;
+    if (!e || !t) return !1;
+    if (typeof e != typeof t) return !1;
+    if ("object" != typeof e) return e === t;
+    if (Array.isArray(e))
+      return (
+        !(!Array.isArray(t) || e.length !== t.length) &&
+        e.every((e, n) => this.deepEqual(e, t[n]))
+      );
+    const n = Object.keys(e),
+      s = Object.keys(t);
+    return (
+      n.length === s.length &&
+      n.every((n) => t.hasOwnProperty(n) && this.deepEqual(e[n], t[n]))
+    );
+  }
+})();
+export const h = c.createElement.bind(c);
+export const Fragment = (e) => (e ? e.children : null);
+export const $state = (t) => e(c, t);
+export const $effect = (e, n) => t(c, e, n);
+export const $memo = (e, t) => n(c, e, t);
+export const $callback = (e, t) => s(c, e, t);
+export const $reducer = (e, t) => o(c, e, t);
+export const $ref = (e) => r(c, e);
+export const $context = (e) => i(c, e);
+export const createContext = c.createContext.bind(c);
+export const memo = c.memo.bind(c);
+export default c;
