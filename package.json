@@ -1,6 +1,6 @@
 {
   "name": "olova",
-  "version": "2.0.8",
+  "version": "2.0.9",
   "description": "A lightweight JavaScript framework for building reactive applications.",
   "main": "dist/olova.js",
   "keywords": [
