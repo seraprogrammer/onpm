@@ -1,5 +1,7 @@
-export default function o(o, t) {
-  const n = o.getCurrentInstance(),
-    r = n.currentHook++;
-  return n.hooks[r] || (n.hooks[r] = { current: t }), n.hooks[r];
+export function createRefHook(o) {
+  return function (n) {
+    const r = o.getCurrentInstance(),
+      t = r.currentHook++;
+    return r.hooks[t] || (r.hooks[t] = { current: n }), r.hooks[t];
+  };
 }

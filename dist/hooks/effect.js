@@ -1,11 +1,20 @@
-export default function e(e, n, t) {
-  const o = e.getCurrentInstance(),
-    s = o.currentHook++,
-    c = o.hooks[s];
-  (!c || !t || t.length !== c.length || t.some((e, n) => e !== c[n])) &&
-    o.pendingEffects.push(() => {
-      o.cleanups.has(s) && o.cleanups.get(s)();
-      const e = n();
-      (o.hooks[s] = t), "function" == typeof e && o.cleanups.set(s, e);
-    });
+export function createEffectHook(n) {
+  return function (e, t) {
+    const o = n.getCurrentInstance(),
+      u = o.currentHook++;
+    o.hooks[u] ||
+      (o.hooks[u] = { deps: null, cleanup: null, effect: e, lastRun: 0 });
+    const c = o.hooks[u];
+    (t
+      ? c.deps &&
+        n.areArraysEqual(
+          t.map((n) => ("function" == typeof n ? n() : n)),
+          c.deps
+        )
+      : 0 !== c.lastRun) ||
+      ("function" == typeof c.cleanup && c.cleanup(),
+      (c.cleanup = e()),
+      (c.deps = t?.map((n) => ("function" == typeof n ? n() : n))),
+      (c.lastRun = Date.now()));
+  };
 }
